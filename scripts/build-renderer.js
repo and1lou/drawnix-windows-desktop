@@ -129,6 +129,8 @@ if (!force) {
 }
 
 // 6) 原子替换
+// 首次构建时 dist/apps 还不存在，rename 到不存在的父目录会 ENOENT，先补上父目录。
+fs.mkdirSync(path.dirname(DIST_WEB), { recursive: true });
 removeTree(BACKUP);
 const hadTarget = fs.existsSync(DIST_WEB);
 if (hadTarget) {
