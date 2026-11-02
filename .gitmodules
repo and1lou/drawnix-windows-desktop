@@ -1,0 +1,3 @@
+[submodule "upstream/drawnix"]
+	path = upstream/drawnix
+	url = https://github.com/plait-board/drawnix.git
