@@ -65,7 +65,7 @@ git submodule update --init --recursive   # 克隆本仓库后的一条命令
 ```
 
 想让上游放在别处（例如与本仓库并列，便于同时阅读源码）时，把 `upstream.config.json`
-的 `path` 指向该目录即可 —— 只有这一条出口，不再按目录名猜测。
+的 `path` 指向该目录即可。
 
 ```json
 { "repo": "https://github.com/plait-board/drawnix", "path": "../drawnix" }
