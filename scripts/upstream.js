@@ -35,14 +35,12 @@ const isUpstreamDir = (dir) =>
  * 上游路径的查找顺序：
  *   1. upstream.config.json 里显式配置的 path
  *   2. upstream/drawnix（推荐：git submodule，版本随主仓库锁定）
- *   3. ../drawnix（本地并列克隆，方便同时看上游源码）
  */
 function upstreamCandidates() {
   const config = readJson(CONFIG_FILE, {});
   const list = [];
   if (config.path) list.push(path.resolve(REPO_ROOT, config.path));
   list.push(path.join(REPO_ROOT, 'upstream', 'drawnix'));
-  list.push(path.resolve(REPO_ROOT, '..', 'drawnix'));
   return [...new Set(list)];
 }
 

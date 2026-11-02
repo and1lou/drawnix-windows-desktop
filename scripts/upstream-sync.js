@@ -7,7 +7,8 @@
  *   npm run upstream:sync -- --branch master   # 跟随分支（不推荐用于发布）
  *   npm run upstream:sync -- --check           # 只检查是否与锁文件一致
  *
- * 上游是独立仓库（submodule 或并列克隆），这里只做 checkout，不改它的任何文件。
+ * 上游是独立仓库（submodule 或 upstream.config.json 指定的目录），这里只做
+ * checkout，不改它的任何文件。
  */
 
 const fs = require('node:fs');

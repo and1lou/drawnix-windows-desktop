@@ -53,17 +53,22 @@
 
 ### 准备上游
 
-渲染层由上游源码直接构建，**不修改上游任何文件**。上游仓库默认从以下位置查找：
+渲染层由上游源码直接构建，**不修改上游任何文件**。上游仓库按以下顺序查找：
 
 1. `upstream.config.json` 里配置的 `path`
 2. `upstream/drawnix`（推荐：git submodule，版本随主仓库锁定）
-3. `../drawnix`（并列克隆，便于同时阅读上游源码）
 
 ```bash
-# 方式 A：submodule（推荐，版本可复现）
+# 推荐：submodule，版本可复现
 git submodule add https://github.com/plait-board/drawnix.git upstream/drawnix
-# 方式 B：并列克隆（当前仓库默认配置）
-git clone https://github.com/plait-board/drawnix.git ../drawnix
+git submodule update --init --recursive   # 克隆本仓库后的一条命令
+```
+
+想让上游放在别处（例如与本仓库并列，便于同时阅读源码）时，把 `upstream.config.json`
+的 `path` 指向该目录即可 —— 只有这一条出口，不再按目录名猜测。
+
+```json
+{ "repo": "https://github.com/plait-board/drawnix", "path": "../drawnix" }
 ```
 
 ### 构建
@@ -152,11 +157,10 @@ npm run dist:win
 
 ### 0. 一次性准备
 
-上游仓库位置由 `upstream.config.json` 决定，查找顺序：
+上游仓库位置按以下顺序确定：
 
 1. `upstream.config.json` 里的 `path`
 2. `upstream/drawnix`（git submodule，推荐）
-3. `../drawnix`（并列克隆）
 
 ```bash
 # 推荐：submodule，上游 commit 由主仓库 gitlink 锁定，clone --recursive 即可复现
