@@ -15,34 +15,34 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": "../..",
+    "baseUrl": "..",
     "paths": {
       "@drawnix/drawnix": [
-        "drawnix/packages/drawnix/src/index.ts"
+        "upstream/drawnix/packages/drawnix/src/index.ts"
       ],
       "@plait-board/react-board": [
-        "drawnix/packages/react-board/src/index.ts"
+        "upstream/drawnix/packages/react-board/src/index.ts"
       ],
       "@plait-board/react-text": [
-        "drawnix/packages/react-text/src/index.ts"
+        "upstream/drawnix/packages/react-text/src/index.ts"
       ],
       "@plait/core": [
-        "drawnix/node_modules/@plait/core/types/plait-core.d.ts"
+        "upstream/drawnix/node_modules/@plait/core/types/plait-core.d.ts"
       ],
       "react": [
-        "drawnix/node_modules/@types/react/index.d.ts"
+        "upstream/drawnix/node_modules/@types/react/index.d.ts"
       ],
       "react/jsx-runtime": [
-        "drawnix/node_modules/@types/react/jsx-runtime.d.ts"
+        "upstream/drawnix/node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "react-dom/client": [
-        "drawnix/node_modules/@types/react-dom/client.d.ts"
+        "upstream/drawnix/node_modules/@types/react-dom/client.d.ts"
       ],
       "localforage": [
-        "drawnix/node_modules/localforage/typings/localforage.d.ts"
+        "upstream/drawnix/node_modules/localforage/typings/localforage.d.ts"
       ],
       "browser-fs-access": [
-        "drawnix-windows-desktop/desktop/shims/fs-desktop.ts"
+        "desktop/shims/fs-desktop.ts"
       ]
     }
   },
