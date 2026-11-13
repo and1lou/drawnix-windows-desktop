@@ -3,12 +3,12 @@
     "repo": "https://github.com/plait-board/drawnix",
     "commit": "b138ff867943ddff6c4c79560e10ab6ee3b5600e",
     "describe": "v0.4.1-32-gb138ff8",
-    "syncedAt": "2026-11-02T02:54:14.578Z"
+    "syncedAt": "2026-11-13T16:22:13.934Z"
   },
   "patches": [],
   "build": {
-    "at": "2026-11-02T02:54:14.579Z",
-    "node": "v22.22.2",
+    "at": "2026-11-13T16:22:13.935Z",
+    "node": "v20.20.2",
     "verified": true,
     "renderer": "dist/apps/web"
   }
