@@ -10,7 +10,7 @@
 
 ## 下载
 
-前往 [Releases](https://github.com/andloo/drawnix-windows-desktop/releases/latest) 下载：
+前往 [Releases](https://github.com/and1lou/drawnix-windows-desktop/releases/latest) 下载：
 
 | 文件 | 说明 |
 | --- | --- |
