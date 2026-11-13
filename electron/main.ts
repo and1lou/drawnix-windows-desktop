@@ -321,6 +321,29 @@ function registerIpc() {
   });
 }
 
+// 关于窗口必须是父窗口模态：不传父窗口时它是非模态的，用户可以点回主界面再次触发菜单，
+// 叠出多个"关于"对话框。
+let aboutDialogOpen = false;
+
+function showAboutDialog() {
+  if (aboutDialogOpen || !mainWindow) return;
+  aboutDialogOpen = true;
+  void dialog
+    .showMessageBox(mainWindow, {
+      type: 'info',
+      title: '关于 Drawnix',
+      message: `Drawnix ${app.getVersion()}`,
+      detail:
+        `开源白板工具（MIT License）\n` +
+        `渲染层基于上游 ${__UPSTREAM_VERSION__}（${__UPSTREAM_COMMIT__}）\n` +
+        'https://github.com/plait-board/drawnix',
+      noLink: true,
+    })
+    .finally(() => {
+      aboutDialogOpen = false;
+    });
+}
+
 // 最小原生菜单
 // 刻意不注册"编辑"菜单（undo/redo/cut/copy/paste/selectAll）：Electron 原生 role 会抢占
 // Ctrl+Z / Ctrl+A / Ctrl+C 等快捷键，导致画布内 Plait 的处理逻辑收不到 keydown。
@@ -357,17 +380,7 @@ function buildMenu() {
         },
         {
           label: '关于 Drawnix',
-          click: () => {
-            void dialog.showMessageBox({
-              type: 'info',
-              title: '关于 Drawnix',
-              message: `Drawnix ${app.getVersion()}`,
-              detail:
-                `开源白板工具（MIT License）\n` +
-                `渲染层基于上游 ${__UPSTREAM_VERSION__}（${__UPSTREAM_COMMIT__}）\n` +
-                'https://github.com/plait-board/drawnix',
-            });
-          },
+          click: () => showAboutDialog(),
         },
       ],
     },
