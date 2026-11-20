@@ -1,0 +1,29 @@
+diff --git a/packages/drawnix/src/transforms/property.ts b/packages/drawnix/src/transforms/property.ts
+index ea900fb..fdc7a1c 100644
+--- a/packages/drawnix/src/transforms/property.ts
++++ b/packages/drawnix/src/transforms/property.ts
+@@ -1,6 +1,7 @@
+ import { PropertyTransforms } from '@plait/common';
+ import { isNullOrUndefined, Path, PlaitBoard, PlaitElement, Transforms } from '@plait/core';
+ import { getMemorizeKey } from '@plait/draw';
++import { getDefaultFontSizeForMindElement, MindElement } from '@plait/mind';
+ import {
+   applyOpacityToHex,
+   hexAlphaToOpacity,
+@@ -112,5 +113,15 @@ export const setTextFontSize = (board: PlaitBoard, size: number) => {
+   if (!Number.isFinite(size) || size <= 0) {
+     return;
+   }
+-  TextTransforms.setFontSize(board, String(size) as any, DEFAULT_FONT_SIZE);
++  // 思维导图根节点的默认字号是 18px（ROOT_TOPIC_FONT_SIZE），子节点才是 14px。
++  // 只有按节点真实默认值判定"清除标记"，14 才会被写成显式字号，而不是
++  // 被当成默认值删掉、再回落到 18px。
++  TextTransforms.setFontSize(
++    board,
++    String(size) as any,
++    (element: PlaitElement) =>
++      MindElement.isMindElement(board, element)
++        ? getDefaultFontSizeForMindElement(element)
++        : DEFAULT_FONT_SIZE
++  );
+ };

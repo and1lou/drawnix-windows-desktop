@@ -1,0 +1,2 @@
+# 补丁必须是 LF：CRLF 会改变 sha256，导致锁文件校验失败
+patches/*.patch -text

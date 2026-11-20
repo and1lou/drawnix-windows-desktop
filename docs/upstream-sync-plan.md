@@ -3,7 +3,7 @@
 > 分析对象：`drawnix/`（上游 plait-board/drawnix，HEAD `b138ff8`，`v0.4.1-32-gb138ff8`）与 `drawnix-windows-desktop/`（自研 Electron 桌面壳，v0.0.3）。  
 > 本文只做诊断与方案设计，**不包含任何代码改动**。
 >
-> **状态：方案 B 已落地。** 本文保留为设计依据与决策记录；落地后的目录结构与脚本用法见 `README.md` 的「从源码构建」「目录结构」两节。与本文的唯一差异：构建配置落在 `desktop/vite.desktop.config.mjs`（零第三方 import，因此可以放在桌面仓库里由上游 vite 直接加载）。
+> **状态：方案 B 已落地。** 本文保留为设计依据与决策记录；落地后的目录结构与脚本用法见 `README.md` 的「从源码构建」「目录结构」两节。与本文的唯一差异：构建配置落在 `desktop/vite.desktop.config.mjs`（零第三方 import，因此可以放在桌面仓库里由上游 vite 直接加载）。补丁流程已实现为 `patches/*.patch` + `upstream-sync` 的 `git apply --check`（不用 `--3way`：宁可因上游改动而失败，也不做模糊合并）。
 
 ---
 

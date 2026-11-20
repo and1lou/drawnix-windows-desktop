@@ -1,0 +1,31 @@
+diff --git a/packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar.tsx b/packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar.tsx
+index 2aa1e5b..f14aa01 100644
+--- a/packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar.tsx
++++ b/packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar.tsx
+@@ -19,7 +19,11 @@ import { flip, offset, useFloating } from '@floating-ui/react';
+ import { Island } from '../../island';
+ import classNames from 'classnames';
+ import { useI18n } from '../../../i18n';
+-import { getStrokeColorByElement as getStrokeColorByMindElement, MindElement } from '@plait/mind';
++import {
++  getFontSizeByMindElement,
++  getStrokeColorByElement as getStrokeColorByMindElement,
++  MindElement,
++} from '@plait/mind';
+ import './popup-toolbar.scss';
+ import {
+   ArrowLineHandle,
+@@ -243,7 +247,12 @@ export const getMindElementState = (board: PlaitBoard, element: MindElement) =>
+     fill: element.fill,
+     strokeColor: getStrokeColorByMindElement(board, element),
+     strokeStyle: getStrokeStyleByElement(board, element),
+-    marks,
++    // getTextMarksByElement 只返回显式标记；根节点的默认字号 18px 没有标记可读。
++    // 不补上实际生效值，工具栏会把中心节点显示成 DEFAULT_FONT_SIZE（14）。
++    marks: {
++      ...marks,
++      'font-size': String(getFontSizeByMindElement(board, element)),
++    },
+   };
+ };
+ 

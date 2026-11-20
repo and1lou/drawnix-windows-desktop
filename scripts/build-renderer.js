@@ -27,6 +27,8 @@ const {
   gitDescribe,
   readLock,
   writeLock,
+  resolvePatches,
+  isPatchApplied,
   cleanHostingFiles,
   removeTree,
   verifyRenderer,
@@ -90,6 +92,26 @@ if (lockedCommit && head && lockedCommit !== head && !allowDrift) {
       `${lockedCommit.slice(0, 7)} 不一致。\n` +
       '请执行 npm run upstream:sync 更新锁定，或加 --allow-upstream-drift 临时构建。'
   );
+}
+
+// 2.1) 锁文件记录了补丁，就必须真的打在上游工作区里 ——
+//      否则构建出来的是"看起来成功、实际缺少修复"的渲染层。
+const recordedPatches = resolvePatches(lock.patches || []);
+if (recordedPatches.length > 0) {
+  const missingFiles = recordedPatches.filter((patch) => !fs.existsSync(patch.file));
+  if (missingFiles.length > 0) {
+    fail(
+      `补丁文件缺失：${missingFiles.map((patch) => patch.name).join('、')}\n` +
+        '请先恢复 patches/ 目录（git checkout -- patches）后重试。'
+    );
+  }
+  const missing = recordedPatches.filter((patch) => !isPatchApplied(upstream, patch.file));
+  if (missing.length > 0) {
+    fail(
+      `上游补丁未应用：${missing.map((patch) => patch.name).join('、')}\n` +
+        '请先执行 npm run upstream:sync 应用补丁，再构建。'
+    );
+  }
 }
 
 step(`构建 ${describe || head} → ${path.relative(REPO_ROOT, STAGING)}`);

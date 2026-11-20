@@ -3,6 +3,7 @@
  * 被 build-renderer / verify-renderer / upstream-sync 共用。
  */
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -11,6 +12,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const CONFIG_FILE = path.join(REPO_ROOT, 'upstream.config.json');
 const LOCK_FILE = path.join(REPO_ROOT, 'upstream.lock.json');
 const DIST_WEB = path.join(REPO_ROOT, 'dist', 'apps', 'web');
+const PATCH_DIR = path.join(REPO_ROOT, 'patches');
 
 /** 上游构建会带上的托管平台文件，桌面端用不到，同步时统一清掉 */
 const HOSTING_FILES = ['_redirects', '_headers', 'robots.txt', 'sitemap.xml'];
@@ -81,6 +83,163 @@ const gitDirtyFiles = (dir) => {
   return out ? out.split('\n').filter(Boolean) : [];
 };
 
+/* ────────────────────────────── 上游补丁 ────────────────────────────── */
+
+const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+/**
+ * patches/ 下的补丁清单，按文件名排序（= 应用顺序）。
+ * 补丁是用 `git diff` 生成的 unified diff，路径相对上游仓库根目录。
+ */
+function listPatches(dir = PATCH_DIR) {
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith('.patch'))
+    .sort()
+    .map((name) => {
+      const file = path.join(dir, name);
+      return { name, file, sha256: sha256File(file) };
+    });
+}
+
+/** 把锁文件里的 { name, sha256 } 还原成带绝对路径的补丁描述 */
+function resolvePatches(recorded = [], dir = PATCH_DIR) {
+  return recorded.map((patch) => ({ ...patch, file: path.join(dir, patch.name) }));
+}
+
+/** 补丁会改到哪些文件（用于冲突提示） */
+function patchTargets(file) {
+  try {
+    return fs
+      .readFileSync(file, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('+++ b/'))
+      .map((line) => line.slice('+++ b/'.length).trim());
+  } catch {
+    return [];
+  }
+}
+
+const gitApply = (dir, args) => {
+  try {
+    const stdout = execFileSync('git', ['-C', dir, 'apply', ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { ok: true, output: (stdout || '').trim() };
+  } catch (error) {
+    const output = `${error.stdout || ''}${error.stderr || ''}`.trim();
+    return { ok: false, output };
+  }
+};
+
+/** 补丁已经应用（能干净地反向应用） */
+const isPatchApplied = (dir, file) => gitApply(dir, ['-R', '--check', '--ignore-space-change', file]).ok;
+
+/** 补丁可以正向应用（当前是未打补丁的状态） */
+const isPatchApplicable = (dir, file) => gitApply(dir, ['--check', '--ignore-space-change', file]).ok;
+
+const isPathDirty = (dir, target) => Boolean(git(dir, ['status', '--porcelain', '--', target]));
+
+/**
+ * 按顺序应用补丁。任何一份失败都抛出错误，由调用方中止同步 ——
+ * 不允许"打不上就跳过"，否则会静默构建出一个缺少修复的安装包。
+ */
+function applyPatches(dir, patches) {
+  for (const patch of patches) {
+    if (!fs.existsSync(patch.file)) {
+      throw new Error(`补丁文件不存在：${patch.name}（${patch.file}）`);
+    }
+    if (isPatchApplied(dir, patch.file)) {
+      console.log(`[patches] 已应用，跳过：${patch.name}`);
+      continue;
+    }
+    const check = gitApply(dir, ['--check', '--ignore-space-change', patch.file]);
+    if (!check.ok) {
+      const targets = patchTargets(patch.file).join(', ') || '（未解析到目标文件）';
+      throw new Error(
+        `补丁无法应用：${patch.name}\n` +
+          `目标文件：${targets}\n` +
+          `${check.output || '（git apply --check 没有输出）'}\n` +
+          '上游对应位置已变化。请按上面的冲突信息更新 patches/ 下的补丁，' +
+          '不要跳过补丁继续构建。'
+      );
+    }
+    const result = gitApply(dir, ['--ignore-space-change', patch.file]);
+    if (!result.ok) {
+      throw new Error(`应用补丁失败：${patch.name}\n${result.output}`);
+    }
+    console.log(`[patches] 已应用：${patch.name}`);
+  }
+}
+
+/**
+ * 逆序回滚补丁，把上游工作区还原成干净状态。
+ *
+ * 上游被切到别的 commit 前必须先回滚，否则 checkout 会被未提交改动挡住；
+ * 回滚失败同样中止（通常意味着补丁文件被改过，或上游文件被手工动过）。
+ */
+function revertPatches(dir, patches) {
+  for (const patch of [...patches].reverse()) {
+    if (!fs.existsSync(patch.file)) {
+      throw new Error(
+        `无法回滚补丁：${patch.name} 不存在。\n` +
+          `请恢复该补丁文件（git checkout -- patches/${patch.name}）后重试。`
+      );
+    }
+    if (isPatchApplicable(dir, patch.file)) {
+      console.log(`[patches] 本就未应用，跳过回滚：${patch.name}`);
+      continue;
+    }
+    const check = gitApply(dir, ['-R', '--check', '--ignore-space-change', patch.file]);
+    if (!check.ok) {
+      const targets = patchTargets(patch.file);
+      const dirtyTargets = targets.filter((target) => isPathDirty(dir, target));
+      // 目标文件干净 = 这份补丁根本没打上（例如上次切版本失败、上游已经换了
+      // commit）。此时没有东西可回滚，跳过即可，避免把用户卡在死循环里。
+      if (dirtyTargets.length === 0) {
+        console.warn(`[patches] 当前上游没有这份补丁的改动，跳过回滚：${patch.name}`);
+        continue;
+      }
+      throw new Error(
+        `无法回滚补丁：${patch.name}\n` +
+          `目标文件：${targets.join(', ') || '（未解析到目标文件）'}\n` +
+          `${check.output || '（git apply -R --check 没有输出）'}\n` +
+          '上游文件可能被手工改过，或补丁与当前上游版本不匹配。' +
+          '请在上游目录执行 git checkout -- . 恢复到干净状态后重试' +
+          '（这会丢弃上游目录里的手工改动）。'
+      );
+    }
+    if (patch.sha256 && sha256File(patch.file) !== patch.sha256) {
+      console.warn(`[patches] 补丁文件已变更，按当前内容回滚：${patch.name}`);
+    }
+    const result = gitApply(dir, ['-R', '--ignore-space-change', patch.file]);
+    if (!result.ok) {
+      throw new Error(`回滚补丁失败：${patch.name}\n${result.output}`);
+    }
+    console.log(`[patches] 已回滚：${patch.name}`);
+  }
+}
+
+/** 检查 patches/ 与锁文件记录是否一致；返回问题列表 */
+function comparePatches(diskPatches, recordedPatches) {
+  const issues = [];
+  const disk = new Map(diskPatches.map((patch) => [patch.name, patch]));
+  const locked = new Map(recordedPatches.map((patch) => [patch.name, patch]));
+  for (const name of locked.keys()) {
+    if (!disk.has(name)) issues.push(`锁文件记录但 patches/ 里不存在：${name}`);
+  }
+  for (const [name, patch] of disk) {
+    if (!locked.has(name)) {
+      issues.push(`patches/ 里有补丁未应用到上游：${name}`);
+    } else if (patch.sha256 !== locked.get(name).sha256) {
+      issues.push(`补丁内容已变更：${name}`);
+    }
+  }
+  return issues;
+}
+
 function readLock() {
   return readJson(LOCK_FILE, {});
 }
@@ -90,8 +249,9 @@ function writeLock(patch) {
   const next = {
     ...current,
     ...patch,
-    // 上游补丁清单。方案 B 下应为空数组：所有桌面能力都走构建期注入。
-    patches: current.patches || [],
+    // 上游补丁清单：由 upstream-sync 应用成功后写入（name + sha256），
+    // 显式传入时才覆盖，避免构建脚本顺手写锁时把补丁记录清空。
+    patches: patch.patches !== undefined ? patch.patches : current.patches || [],
     upstream: { ...(current.upstream || {}), ...(patch.upstream || {}) },
     build: { ...(current.build || {}), ...(patch.build || {}) },
   };
@@ -247,6 +407,7 @@ module.exports = {
   DIST_WEB,
   LOCK_FILE,
   CONFIG_FILE,
+  PATCH_DIR,
   fail,
   readJson,
   writeJson,
@@ -255,6 +416,14 @@ module.exports = {
   gitHead,
   gitDescribe,
   gitDirtyFiles,
+  listPatches,
+  resolvePatches,
+  applyPatches,
+  revertPatches,
+  comparePatches,
+  isPatchApplied,
+  isPatchApplicable,
+  patchTargets,
   readLock,
   writeLock,
   cleanHostingFiles,

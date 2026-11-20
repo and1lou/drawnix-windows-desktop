@@ -121,7 +121,7 @@ DRAWNIX_USE_BUNDLE=1 npx electron .
 
 | 命令 | 作用 |
 | --- | --- |
-| `npm run upstream:sync -- --tag v0.4.2` | 切换上游版本并写入 `upstream.lock.json` |
+| `npm run upstream:sync -- --tag v0.4.2` | 切换上游版本、应用 `patches/` 补丁，并写入 `upstream.lock.json` |
 | `npm run upstream:check` | 检查上游当前 commit 是否与锁文件一致 |
 | `npm run build:renderer` | 用 `desktop/vite.desktop.config.mjs` 从上游源码构建渲染层 |
 | `npm run verify:renderer` | 校验产物是否真的包含桌面适配层 |
@@ -205,7 +205,7 @@ npm run upstream:sync -- --tag v0.4.2      # 或 --commit <sha> / --branch maste
 npm run upstream:check                     # 确认锁文件与上游一致
 ```
 
-脚本会：校验上游工作区干净 → `git fetch --tags` → `checkout` → 写 `upstream.lock.json`（commit / describe / 时间）。
+脚本会：回滚上次补丁 → 校验上游工作区干净 → `git fetch --tags` → `checkout` → 应用 `patches/` → 写 `upstream.lock.json`（commit / describe / 时间 / 补丁清单）。
 
 ### 3. 重新构建
 
@@ -259,9 +259,24 @@ npm run build:renderer
 
 ### 关于 `patches/`
 
-`upstream.lock.json` 里的 `patches` 目前是空数组 —— 所有桌面能力都通过构建期注入实现，**不需要补丁**。
-只有当上游彻底重构了文件能力模块、alias 无法生效时，才考虑在 `patches/` 放一个最小补丁，
-并在 `upstream-sync.js` 里按顺序 `git apply --3way`（任一失败即中止，绝不静默降级）。
+桌面能力仍然全部走构建期注入；`patches/` 只放**上游自身行为缺陷**的最小修复。目前是一组思维导图字号补丁：
+
+| 补丁 | 改动文件 | 目的 |
+| --- | --- | --- |
+| `0001-mind-font-size-root-default.patch` | `packages/drawnix/src/transforms/property.ts` | 按节点真实默认字号（根节点 18px / 子节点 14px）判断"清除标记"。修好之前，设 14 会被当成默认值删掉标记，中心节点回落到 18px，比 13、15 都大 |
+| `0002-mind-font-size-toolbar-display.patch` | `packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar.tsx` | 工具栏显示思维导图节点的**实际生效字号**，中心节点不再被显示成 14 |
+
+流程由 `scripts/upstream-sync.js` 负责：
+
+1. 切版本前，按 `upstream.lock.json` 里的 `{ name, sha256 }` **逆序回滚**补丁，让上游回到干净状态；补丁文件被改过、或上游被手工动过，直接中止。
+2. `checkout` 目标版本后，按文件名顺序对每个 `patches/*.patch` 先 `git apply --check`、再 `git apply`。
+3. 任一补丁打不上立即报错并打印冲突文件与行号，**绝不跳过**；修好补丁后重跑 `npm run upstream:sync` 即可（脚本会先把已应用的补丁回滚干净）。
+4. 应用成功后把补丁清单与 sha256 写进 `upstream.lock.json`；`npm run upstream:check` 会同时校验 commit、补丁清单、以及"补丁确实已应用"。
+
+> 同步完成后上游工作区会显示为 modified（补丁生效中），这是预期状态。不要在上游目录提交或手工改文件；切换版本时脚本会先按锁文件回滚补丁。
+
+排障时可用 `npm run upstream:sync -- --without-patches` 只保留干净上游（锁文件 `patches` 写成空数组）。
+`npm run build:renderer` 在构建前会复核锁文件里的补丁都已应用，避免在上游被 `git reset` 过的情况下构建出缺少修复的渲染层。
 
 ## 目录结构
 
@@ -282,6 +297,7 @@ npm run build:renderer
 │   │   └── toast.ts            # 保存成功/失败提示
 │   ├── vite.desktop.config.mjs # 构建配置：alias + 入口 + 产物目录
 │   └── tsconfig.json
+├── patches/                    # 上游行为缺陷的最小修复（upstream:sync 应用/回滚）
 ├── scripts/
 │   ├── upstream.js             # 上游定位、版本锁定、产物校验的公共逻辑
 │   ├── upstream-sync.js        # 切换上游版本
@@ -312,7 +328,8 @@ Drawnix.exe (NSIS 安装包)
 
 - **不使用 `file://` 加载页面**：`file://` 的 null origin 会导致 IndexedDB、剪贴板 API 失效，且 `<base href="/">` 的绝对路径会断链。因此注册 `app://`（`standard: true, secure: true`）承载页面。
 - **进程隔离**：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`，渲染层只能调用 preload 暴露的白名单方法。
-- **原生文件能力靠构建期注入**：上游所有本地文件操作都收口在 `packages/drawnix/src/data/filesystem.ts`，而它只从 `browser-fs-access` 导入 `fileOpen` / `fileSave` / `supported` 三个符号。构建时用 Vite `resolve.alias` 把这个模块整体换成 `desktop/shims/fs-desktop.ts`，即可让打开、保存、另存为、导出图片、插入图片全部走原生 `dialog` + `fs`，**上游源码一行都不用改**。打开时把文件绝对路径挂到 `File.handle` 上，上游会把它存进 `appState.fileHandle`，保存时再原样传回，因此"Ctrl+S 覆盖当前文件"无需任何补丁。
+- **原生文件能力靠构建期注入**：上游所有本地文件操作都收口在 `packages/drawnix/src/data/filesystem.ts`，而它只从 `browser-fs-access` 导入 `fileOpen` / `fileSave` / `supported` 三个符号。构建时用 Vite `resolve.alias` 把这个模块整体换成 `desktop/shims/fs-desktop.ts`，即可让打开、保存、另存为、导出图片、插入图片全部走原生 `dialog` + `fs`，**桌面适配不需要改上游源码**。打开时把文件绝对路径挂到 `File.handle` 上，上游会把它存进 `appState.fileHandle`，保存时再原样传回，因此"Ctrl+S 覆盖当前文件"无需任何补丁。
+- **上游行为修复走补丁**：`patches/` 只放上游自身缺陷的最小修复（当前是思维导图字号），由 `upstream:sync` 在 `checkout` 后应用、切版本前回滚；补丁打不上会中止同步，不会静默跳过。
 - **导出下载同样不改上游**：图片导出走渲染层的 `<a download>`，主进程用 `session.on('will-download')` 接管为原生另存为对话框。
 - **安全策略**：CSP 白名单、协议处理器做目录穿越校验、外链统一 `shell.openExternal`、剪贴板写权限单独放行。
 
